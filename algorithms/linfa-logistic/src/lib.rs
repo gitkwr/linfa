@@ -32,6 +32,7 @@ use ndarray::{
 use ndarray_stats::QuantileExt;
 use serde::{Deserialize, Serialize};
 use std::default::Default;
+use std::fmt::Debug;
 
 mod argmin_param;
 mod float;
@@ -187,8 +188,13 @@ impl<F: Float, D: Dimension> LogisticRegressionValidParams<F, D> {
     }
 }
 
-impl<'a, C: 'a + Ord + Clone, F: Float, D: Data<Elem = F>, T: AsSingleTargets<Elem = C>>
-    Fit<ArrayBase<D, Ix2>, T, Error> for ValidLogisticRegression<F>
+impl<
+        'a,
+        C: 'a + Ord + Clone + Debug,
+        F: Float,
+        D: Data<Elem = F>,
+        T: AsSingleTargets<Elem = C>,
+    > Fit<ArrayBase<D, Ix2>, T, Error> for ValidLogisticRegression<F>
 {
     type Object = FittedLogisticRegression<F, C>;
 
@@ -271,48 +277,91 @@ fn label_classes<F, T, C>(y: T) -> Result<(ClassLabels<F, C>, Array1<F>)>
 where
     F: Float,
     T: AsSingleTargets<Elem = C>,
-    C: Ord + Clone,
+    C: Ord + Clone + Debug,
 {
     let y_single_target = y.as_single_targets();
-    let mut classes: Vec<&C> = vec![];
-    let mut target_vec = vec![];
-    let mut use_negative_label: bool = true;
-    for item in y_single_target {
-        if let Some(last_item) = classes.last() {
-            if *last_item != item {
-                use_negative_label = !use_negative_label;
-            }
-        }
-        if !classes.contains(&item) {
-            classes.push(item);
-        }
-        target_vec.push(if use_negative_label {
-            F::NEGATIVE_LABEL
-        } else {
-            F::POSITIVE_LABEL
+
+    let classes = y_single_target
+        .iter()
+        .fold(Some((None, None)), |map, elm| match map {
+            //the two values in the Some(None, None) are of format Option<(lable, counter)>
+            Some((Some((n, val)), x)) if n == elm => Some((Some((n, val + 1)), x)),
+            Some((x, Some((n, val)))) if n == elm => Some((x, Some((n, val + 1)))),
+            Some((Some(x), None)) => Some((Some(x), Some((elm, 1)))),
+            Some((None, None)) => Some((Some((elm, 1)), None)),
+            _ => None,
         });
-    }
-    if classes.len() != 2 {
-        return Err(Error::WrongNumberOfClasses);
-    }
-    let mut target_array = Array1::from(target_vec);
-    let labels = if classes[0] < classes[1] {
-        (F::NEGATIVE_LABEL, F::POSITIVE_LABEL)
-    } else {
+
+    // unwrap classes,
+    // None => we found more than two classes,
+    // Some(_, None)|Some(None,_) => we found less than two classes
+    let (pos_class, neg_class) = match classes {
+        Some((Some(a), Some(b))) => (a, b),
+        _ => return Err(Error::WrongNumberOfClasses),
+    };
+
+    let mut target_array = y_single_target
+        .into_iter()
+        .map(|x| {
+            if x == pos_class.0 {
+                F::POSITIVE_LABEL
+            } else {
+                F::NEGATIVE_LABEL
+            }
+        })
+        .collect::<Array1<_>>();
+
+    let labels = if pos_class.1 < neg_class.1 {
         // If we found the larger class first, flip the sign in the target
         // vector, so that -1.0 is always the label for the smaller class
         // and 1.0 the label for the larger class
         target_array *= -F::one();
+        (F::NEGATIVE_LABEL, F::POSITIVE_LABEL)
+    } else {
         (F::POSITIVE_LABEL, F::NEGATIVE_LABEL)
     };
+
+    // // below is the original code which we have replaced
+    // let mut classes: Vec<&C> = vec![];
+    // let mut target_vec = vec![];
+    // let mut use_negative_label: bool = true;
+    // for item in y_single_target {
+    //     if let Some(last_item) = classes.last() {
+    //         if *last_item != item {
+    //             use_negative_label = !use_negative_label;
+    //         }
+    //     }
+    //     if !classes.contains(&item) {
+    //         classes.push(item);
+    //     }
+    //     target_vec.push(if use_negative_label {
+    //         F::NEGATIVE_LABEL
+    //     } else {
+    //         F::POSITIVE_LABEL
+    //     });
+    // }
+    // if classes.len() != 2 {
+    //     return Err(Error::WrongNumberOfClasses);
+    // }
+    // let mut target_array = Array1::from(target_vec);
+    // let labels = if classes[0] < classes[1] {
+    //     (F::NEGATIVE_LABEL, F::POSITIVE_LABEL)
+    // } else {
+    //     // If we found the larger class first, flip the sign in the target
+    //     // vector, so that -1.0 is always the label for the smaller class
+    //     // and 1.0 the label for the larger class
+    //     target_array *= -F::one();
+    //     (F::POSITIVE_LABEL, F::NEGATIVE_LABEL)
+    // };
+
     Ok((
         vec![
             ClassLabel {
-                class: classes[0].clone(),
+                class: pos_class.0.clone(),
                 label: labels.0,
             },
             ClassLabel {
-                class: classes[1].clone(),
+                class: neg_class.0.clone(),
                 label: labels.1,
             },
         ],
