@@ -623,6 +623,10 @@ impl<F: Float, C: PartialOrd + Clone> FittedLogisticRegression<F, C> {
         probs.mapv_inplace(logistic);
         probs
     }
+
+    pub fn labels(&self) -> &ClassLabels<F, C>{
+        &self.labels
+    }
 }
 
 impl<C: PartialOrd + Clone + Default, F: Float, D: Data<Elem = F>>
@@ -737,14 +741,14 @@ impl<C: PartialOrd + Clone + Default, F: Float, D: Data<Elem = F>>
 }
 
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
-struct ClassLabel<F, C: PartialOrd> {
+pub struct ClassLabel<F, C: PartialOrd> {
     class: C,
     label: F,
 }
 
 type ClassLabels<F, C> = Vec<ClassLabel<F, C>>;
 
-fn class_from_label<F: Float, C: PartialOrd + Clone>(labels: &[ClassLabel<F, C>], label: F) -> C {
+pub fn class_from_label<F: Float, C: PartialOrd + Clone>(labels: &[ClassLabel<F, C>], label: F) -> C {
     labels
         .iter()
         .find(|cl| cl.label == label)
@@ -752,6 +756,8 @@ fn class_from_label<F: Float, C: PartialOrd + Clone>(labels: &[ClassLabel<F, C>]
         .class
         .clone()
 }
+
+
 
 /// Internal representation of a logistic regression problem.
 /// This data structure exists to be handed to Argmin.

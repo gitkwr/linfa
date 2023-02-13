@@ -80,7 +80,8 @@ pub trait Label: PartialEq + Eq + Hash + Clone + Ord + fmt::Debug + Default {}
 
 impl Label for bool {}
 impl Label for usize {}
-impl Label for u32 {}
+impl Label for u32 {} //?? This we need but i32 also implemented as otherwise there was some error at further below in this file
+impl Label for i32 {}
 impl Label for String {}
 impl Label for () {}
 impl Label for &str {}
